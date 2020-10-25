@@ -1,4 +1,4 @@
-module PhotoGroove exposing (Message, main)
+port module PhotoGroove exposing (Message, main)
 
 import Array exposing (Array)
 import Browser
@@ -48,6 +48,15 @@ viewSizeChooser selectedSize size =
         ]
 
 
+type alias FilterOptions =
+    { url : String
+    , filters : List { name : String, amount : Float }
+    }
+
+
+port setFilters : FilterOptions -> Cmd msg
+
+
 onSlide : (Int -> Message) -> Attribute Message
 onSlide slideEventMapper =
     Decoder.at [ "detail", "slidTo" ] Decoder.int
@@ -95,7 +104,7 @@ viewLoaded thumbnails selected model =
         (List.map (viewSizeChooser model.size) [ Small, Medium, Large ])
     , div [ id "thumbnails", class <| showSize model.size ]
         (List.map (viewThumbnail selected) thumbnails)
-    , img [ class "large", src <| urlPrefix ++ "large/" ++ selected.fileName ] []
+    , canvas [ id "main-canvas", class "large" ] []
     ]
 
 
@@ -123,10 +132,6 @@ type ThumbnailSize
     | Large
 
 
-type alias Model =
-    { state : State, size : ThumbnailSize, hue : Int, ripple : Int, noise : Int }
-
-
 type Message
     = ThumbnailClicked Thumbnail
     | SurpriseMeClicked
@@ -146,6 +151,10 @@ type State
     = Loading
     | Loaded (List Thumbnail) Thumbnail
     | Errored String
+
+
+type alias Model =
+    { state : State, size : ThumbnailSize, hue : Int, ripple : Int, noise : Int }
 
 
 initialModel : Model
@@ -176,6 +185,18 @@ handleLoadedThumbnails result model =
             { model | state = Errored "Thumbnail loading failed" }
 
 
+applyFilters : Thumbnail -> Model -> Cmd msg
+applyFilters thumbnail model =
+    setFilters
+        { url = urlPrefix ++ "large/" ++ thumbnail.fileName
+        , filters =
+            [ { name = "Hue", amount = toFloat model.hue / 11 }
+            , { name = "Ripple", amount = toFloat model.ripple / 11 }
+            , { name = "Noise", amount = toFloat model.noise / 11 }
+            ]
+        }
+
+
 update : Message -> Model -> ( Model, Cmd Message )
 update message model =
     case ( message, model.state ) of
@@ -183,27 +204,32 @@ update message model =
             ( { model | size = size }, Cmd.none )
 
         ( LoadedThumbnails result, _ ) ->
-            ( handleLoadedThumbnails result model, Cmd.none )
+            case result of
+                Ok (first :: _) ->
+                    ( handleLoadedThumbnails result model, applyFilters first model )
 
-        ( ThumbnailClicked thumbnail, Loaded thumbnails selected ) ->
-            ( { model | state = Loaded thumbnails thumbnail }, Cmd.none )
+                _ ->
+                    ( handleLoadedThumbnails result model, Cmd.none )
 
-        ( SurpriseMeClicked, Loaded ((firstThumbnail :: otherThumbnails) as thumbnails) selected ) ->
+        ( ThumbnailClicked thumbnail, Loaded thumbnails _ ) ->
+            ( { model | state = Loaded thumbnails thumbnail }, applyFilters thumbnail model )
+
+        ( SurpriseMeClicked, Loaded ((firstThumbnail :: otherThumbnails) as thumbnails) _ ) ->
             Random.uniform firstThumbnail thumbnails
                 |> Random.generate ThumbnailRandomlyPicked
                 |> Tuple.pair model
 
-        ( ThumbnailRandomlyPicked thumbnail, Loaded thumbnails selected ) ->
-            ( { model | state = Loaded thumbnails thumbnail }, Cmd.none )
+        ( ThumbnailRandomlyPicked thumbnail, Loaded thumbnails _ ) ->
+            ( { model | state = Loaded thumbnails thumbnail }, applyFilters thumbnail model )
 
-        ( HueFilterUpdated newValue, _ ) ->
-            ( { model | hue = newValue }, Cmd.none )
+        ( HueFilterUpdated newValue, Loaded _ selected ) ->
+            ( { model | hue = newValue }, applyFilters selected model )
 
-        ( RippleFilterUpdated newValue, _ ) ->
-            ( { model | ripple = newValue }, Cmd.none )
+        ( RippleFilterUpdated newValue, Loaded _ selected ) ->
+            ( { model | ripple = newValue }, applyFilters selected model )
 
-        ( NoiseFilterUpdated newValue, _ ) ->
-            ( { model | noise = newValue }, Cmd.none )
+        ( NoiseFilterUpdated newValue, Loaded _ selected ) ->
+            ( { model | noise = newValue }, applyFilters selected model )
 
         _ ->
             ( model, Cmd.none )
