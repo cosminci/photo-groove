@@ -1,11 +1,12 @@
-module PhotoGroove exposing (main)
+module PhotoGroove exposing (Message, main)
 
 import Array exposing (Array)
 import Browser
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (onCheck, onClick)
-import Random exposing (Generator, generate)
+import Http
+import Random exposing (Generator, generate, uniform)
 
 
 type alias UrlPrefix =
@@ -20,9 +21,9 @@ urlPrefix =
 viewThumbnail : Thumbnail -> Thumbnail -> Html Message
 viewThumbnail selectedThumbnail thumbnail =
     img
-        [ src (urlPrefix ++ thumbnail.fileName)
+        [ src <| urlPrefix ++ thumbnail.fileName
         , classList [ ( "selected", selectedThumbnail == thumbnail ) ]
-        , onClick (ThumbnailClicked thumbnail)
+        , onClick <| ThumbnailClicked thumbnail
         ]
         []
 
@@ -33,21 +34,18 @@ viewSizeChooser selectedSize size =
         [ input
             [ type_ "radio"
             , name "size"
-            , onCheck (sizeChanged size)
-            , checked (selectedSize == size)
+            , onCheck <|
+                \checked ->
+                    if checked then
+                        SizeChanged size
+
+                    else
+                        SizeChanged selectedSize
+            , checked <| selectedSize == size
             ]
             []
-        , text (showSize size)
+        , text <| showSize size
         ]
-
-
-sizeChanged : ThumbnailSize -> Bool -> Message
-sizeChanged size checked =
-    if checked == True then
-        SizeChanged size
-
-    else
-        Noop
 
 
 showSize : ThumbnailSize -> String
@@ -63,17 +61,30 @@ showSize size =
             "large"
 
 
+viewLoaded : List Thumbnail -> Thumbnail -> ThumbnailSize -> List (Html Message)
+viewLoaded thumbnails selected size =
+    [ h1 [] [ text "Photo Groove" ]
+    , button [ onClick SurpriseMeClicked ] [ text "Surprise Me!" ]
+    , div [ id "choose-size" ]
+        (List.map (viewSizeChooser size) [ Small, Medium, Large ])
+    , div [ id "thumbnails", class <| showSize size ]
+        (List.map (viewThumbnail selected) thumbnails)
+    , img [ class "large", src <| urlPrefix ++ "large/" ++ selected.fileName ] []
+    ]
+
+
 view : Model -> Html Message
 view model =
-    div [ class "context" ]
-        [ h1 [] [ text "Photo Groove" ]
-        , button [ onClick SurpriseMeClicked ] [ text "Surprise Me!" ]
-        , div [ id "choose-size" ]
-            (List.map (viewSizeChooser model.size) [ Small, Medium, Large ])
-        , div [ id "thumbnails", class (showSize model.size) ]
-            (List.map (viewThumbnail model.selected) model.thumbnails)
-        , img [ class "large", src (urlPrefix ++ "large/" ++ model.selected.fileName) ] []
-        ]
+    div [ class "content" ] <|
+        case model.state of
+            Loaded thumbnails selected ->
+                viewLoaded thumbnails selected model.size
+
+            Loading ->
+                []
+
+            Errored error ->
+                [ text <| "Error" ++ error ]
 
 
 type alias FileName =
@@ -91,62 +102,88 @@ type ThumbnailSize
 
 
 type alias Model =
-    { thumbnails : List Thumbnail, selected : Thumbnail, size : ThumbnailSize }
-
-
-initialModel : Model
-initialModel =
-    { thumbnails =
-        [ { fileName = "1.jpeg" }
-        , { fileName = "2.jpeg" }
-        , { fileName = "3.jpeg" }
-        ]
-    , selected = { fileName = "1.jpeg" }
-    , size = Large
-    }
-
-
-randomThumbnailSelector : Random.Generator Int
-randomThumbnailSelector =
-    Random.int 0 (Array.length thumbnailsArray - 1)
-
-
-thumbnailsArray : Array Thumbnail
-thumbnailsArray =
-    Array.fromList initialModel.thumbnails
+    { state : State, size : ThumbnailSize }
 
 
 type Message
     = ThumbnailClicked Thumbnail
     | SurpriseMeClicked
     | SizeChanged ThumbnailSize
-    | ThumbnailIndexRandomlySelected Int
-    | Noop
+    | ThumbnailRandomlyPicked Thumbnail
+    | LoadedThumbnails (Result Http.Error String)
+
+
+type State
+    = Loading
+    | Loaded (List Thumbnail) Thumbnail
+    | Errored String
+
+
+initialModel : Model
+initialModel =
+    { state = Loading
+    , size = Large
+    }
+
+
+handleLoadedThumbnails : Result Http.Error String -> Model -> Model
+handleLoadedThumbnails result model =
+    case result of
+        Ok responseStr ->
+            let
+                fileNames =
+                    String.split "," responseStr
+
+                thumbnails =
+                    List.map Thumbnail fileNames
+            in
+            case thumbnails of
+                firstThumbnail :: _ ->
+                    { model | state = Loaded thumbnails firstThumbnail }
+
+                [] ->
+                    { model | state = Errored "No thumbnails loaded" }
+
+        Err _ ->
+            { model | state = Errored "HTTP error" }
 
 
 update : Message -> Model -> ( Model, Cmd Message )
 update message model =
-    case message of
-        ThumbnailClicked thumbnail ->
-            ( { model | selected = thumbnail }, Cmd.none )
-
-        SurpriseMeClicked ->
-            ( model, Random.generate ThumbnailIndexRandomlySelected randomThumbnailSelector )
-
-        ThumbnailIndexRandomlySelected index ->
-            ( { model | selected = Maybe.withDefault model.selected (Array.get index thumbnailsArray) }, Cmd.none )
-
-        SizeChanged size ->
+    case ( message, model.state ) of
+        ( SizeChanged size, _ ) ->
             ( { model | size = size }, Cmd.none )
 
-        Noop ->
+        ( LoadedThumbnails result, _ ) ->
+            ( handleLoadedThumbnails result model, Cmd.none )
+
+        ( ThumbnailClicked thumbnail, Loaded (firstThumbnail :: otherThumbnails) selected ) ->
+            ( { model | state = Loaded (firstThumbnail :: otherThumbnails) selected }, Cmd.none )
+
+        ( SurpriseMeClicked, Loaded ((firstThumbnail :: otherThumbnails) as thumbnails) selected ) ->
+            Random.uniform firstThumbnail thumbnails
+                |> Random.generate ThumbnailRandomlyPicked
+                |> Tuple.pair model
+
+        ( ThumbnailRandomlyPicked thumbnail, Loaded thumbnails selected ) ->
+            ( { model | state = Loaded thumbnails thumbnail }, Cmd.none )
+
+        _ ->
             ( model, Cmd.none )
+
+
+initialCmd : Cmd Message
+initialCmd =
+    Http.get
+        { url = "http://elm-in-action.com/photos/list"
+        , expect = Http.expectString (\result -> LoadedThumbnails result)
+        }
 
 
 main : Program () Model Message
 main =
     Browser.element
-        { init = \flags -> ( initialModel, Cmd.none )
+        { init = \flags -> ( initialModel, initialCmd )
         , view = view
         , update = update
         , subscriptions = \model -> Sub.none
