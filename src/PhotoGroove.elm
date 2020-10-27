@@ -136,7 +136,7 @@ type Message
     | SizeChanged ThumbnailSize
     | ThumbnailRandomlyPicked Thumbnail
     | LoadedThumbnails LoadThumbnailsResult
-    | ActivityUpdated String.String
+    | ActivityUpdated String
     | HueFilterUpdated Int
     | RippleFilterUpdated Int
     | NoiseFilterUpdated Int
@@ -246,7 +246,7 @@ initialCmd =
         }
 
 
-main : Program Float Model Message
+main : Program Value Model Message
 main =
     Browser.element
         { init = init
@@ -256,18 +256,38 @@ main =
         }
 
 
-init : Float -> ( Model, Cmd Message )
+init : Value -> ( Model, Cmd Message )
 init flags =
     let
         activity =
-            "Initializing Pasta v" ++ String.fromFloat flags
+            "Initializing Pasta " ++ parseFlags flags
     in
     ( { initialModel | activity = activity }, initialCmd )
 
 
+parseFlags : Value -> String
+parseFlags flags =
+    case Decoder.decodeValue Decoder.float flags of
+        Ok f ->
+            "version " ++ String.fromFloat f
+
+        Err err ->
+            "error occurred: " ++ errorToString err
+
+
 subscriptions : Model -> Sub Message
 subscriptions model =
-    activityChanges ActivityUpdated
+    activityChanges parseActivity
+
+
+parseActivity : Value -> Message
+parseActivity v =
+    case Decoder.decodeValue Decoder.string v of
+        Ok str ->
+            ActivityUpdated str
+
+        Err err ->
+            ActivityUpdated (errorToString err)
 
 
 rangeSlider : List (Attribute msg) -> List (Html msg) -> Html msg
@@ -278,4 +298,4 @@ rangeSlider attributes children =
 port setFilters : FilterOptions -> Cmd msg
 
 
-port activityChanges : (String -> msg) -> Sub msg
+port activityChanges : (Value -> msg) -> Sub msg
