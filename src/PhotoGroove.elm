@@ -54,9 +54,6 @@ type alias FilterOptions =
     }
 
 
-port setFilters : FilterOptions -> Cmd msg
-
-
 onSlide : (Int -> Message) -> Attribute Message
 onSlide slideEventMapper =
     Decoder.at [ "detail", "slidTo" ] Decoder.int
@@ -100,6 +97,7 @@ viewLoaded thumbnails selected model =
         , viewFilter RippleFilterUpdated "Ripple" model.ripple
         , viewFilter NoiseFilterUpdated "Noise" model.noise
         ]
+    , div [ class "activity" ] [ text model.activity ]
     , div [ id "choose-size" ]
         (List.map (viewSizeChooser model.size) [ Small, Medium, Large ])
     , div [ id "thumbnails", class <| showSize model.size ]
@@ -138,6 +136,7 @@ type Message
     | SizeChanged ThumbnailSize
     | ThumbnailRandomlyPicked Thumbnail
     | LoadedThumbnails LoadThumbnailsResult
+    | ActivityUpdated String.String
     | HueFilterUpdated Int
     | RippleFilterUpdated Int
     | NoiseFilterUpdated Int
@@ -154,13 +153,14 @@ type State
 
 
 type alias Model =
-    { state : State, size : ThumbnailSize, hue : Int, ripple : Int, noise : Int }
+    { state : State, size : ThumbnailSize, activity : String, hue : Int, ripple : Int, noise : Int }
 
 
 initialModel : Model
 initialModel =
     { state = Loading
     , size = Large
+    , activity = ""
     , hue = 0
     , ripple = 0
     , noise = 0
@@ -231,6 +231,9 @@ update message model =
         ( NoiseFilterUpdated newValue, Loaded _ selected ) ->
             ( { model | noise = newValue }, applyFilters selected model )
 
+        ( ActivityUpdated activity, _ ) ->
+            ( { model | activity = activity }, Cmd.none )
+
         _ ->
             ( model, Cmd.none )
 
@@ -249,10 +252,21 @@ main =
         { init = \_ -> ( initialModel, initialCmd )
         , view = view
         , update = update
-        , subscriptions = \_ -> Sub.none
+        , subscriptions = subscriptions
         }
+
+
+subscriptions : Model -> Sub Message
+subscriptions model =
+    activityChanges ActivityUpdated
 
 
 rangeSlider : List (Attribute msg) -> List (Html msg) -> Html msg
 rangeSlider attributes children =
     node "range-slider" attributes children
+
+
+port setFilters : FilterOptions -> Cmd msg
+
+
+port activityChanges : (String -> msg) -> Sub msg
