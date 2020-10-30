@@ -1,4 +1,4 @@
-port module PhotoGroove exposing (main, thumbnailDecoder)
+port module PhotoGroove exposing (Message(..), initialModel, main, thumbnailDecoder, update)
 
 import Array exposing (Array)
 import Browser
@@ -185,16 +185,26 @@ handleLoadedThumbnails result model =
             { model | state = Errored "Thumbnail loading failed" }
 
 
-applyFilters : Thumbnail -> Model -> Cmd msg
-applyFilters thumbnail model =
-    setFilters
-        { url = urlPrefix ++ "large/" ++ thumbnail.fileName
-        , filters =
-            [ { name = "Hue", amount = toFloat model.hue / 11 }
-            , { name = "Ripple", amount = toFloat model.ripple / 11 }
-            , { name = "Noise", amount = toFloat model.noise / 11 }
-            ]
-        }
+applyFilters : Model -> ( Model, Cmd msg )
+applyFilters model =
+    case model.state of
+        Loaded _ selected ->
+            ( model
+            , setFilters
+                { url = urlPrefix ++ "large/" ++ selected.fileName
+                , filters =
+                    [ { name = "Hue", amount = toFloat model.hue / 11 }
+                    , { name = "Ripple", amount = toFloat model.ripple / 11 }
+                    , { name = "Noise", amount = toFloat model.noise / 11 }
+                    ]
+                }
+            )
+
+        Loading ->
+            ( model, Cmd.none )
+
+        Errored _ ->
+            ( model, Cmd.none )
 
 
 update : Message -> Model -> ( Model, Cmd Message )
@@ -204,15 +214,10 @@ update message model =
             ( { model | size = size }, Cmd.none )
 
         ( LoadedThumbnails result, _ ) ->
-            case result of
-                Ok (first :: _) ->
-                    ( handleLoadedThumbnails result model, applyFilters first model )
-
-                _ ->
-                    ( handleLoadedThumbnails result model, Cmd.none )
+            applyFilters <| handleLoadedThumbnails result model
 
         ( ThumbnailClicked thumbnail, Loaded thumbnails _ ) ->
-            ( { model | state = Loaded thumbnails thumbnail }, applyFilters thumbnail model )
+            applyFilters { model | state = Loaded thumbnails thumbnail }
 
         ( SurpriseMeClicked, Loaded ((firstThumbnail :: otherThumbnails) as thumbnails) _ ) ->
             Random.uniform firstThumbnail thumbnails
@@ -220,16 +225,16 @@ update message model =
                 |> Tuple.pair model
 
         ( ThumbnailRandomlyPicked thumbnail, Loaded thumbnails _ ) ->
-            ( { model | state = Loaded thumbnails thumbnail }, applyFilters thumbnail model )
+            applyFilters { model | state = Loaded thumbnails thumbnail }
 
-        ( HueFilterUpdated newValue, Loaded _ selected ) ->
-            ( { model | hue = newValue }, applyFilters selected model )
+        ( HueFilterUpdated newValue, _ ) ->
+            applyFilters { model | hue = newValue }
 
-        ( RippleFilterUpdated newValue, Loaded _ selected ) ->
-            ( { model | ripple = newValue }, applyFilters selected model )
+        ( RippleFilterUpdated newValue, _ ) ->
+            applyFilters { model | ripple = newValue }
 
-        ( NoiseFilterUpdated newValue, Loaded _ selected ) ->
-            ( { model | noise = newValue }, applyFilters selected model )
+        ( NoiseFilterUpdated newValue, _ ) ->
+            applyFilters { model | noise = newValue }
 
         ( ActivityUpdated activity, _ ) ->
             ( { model | activity = activity }, Cmd.none )
