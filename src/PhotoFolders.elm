@@ -27,6 +27,11 @@ type Folder
         }
 
 
+type FolderPath
+    = End
+    | Subfolder Int FolderPath
+
+
 type alias Model =
     { selectedPhotoUrl : Maybe String
     , photos : Dict String Photo
@@ -50,11 +55,6 @@ init _ =
         , expect = Http.expectJson GotInitialModel modelDecoder
         }
     )
-
-
-type FolderPath
-    = End
-    | Subfolder Int FolderPath
 
 
 toggleExpanded : FolderPath -> Folder -> Folder
