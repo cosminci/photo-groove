@@ -1,4 +1,4 @@
-port module PhotoGroove exposing (Message(..), Model, State(..), Thumbnail, initialModel, main, thumbnailDecoder, update, urlPrefix, view)
+port module PhotoGallery exposing (Model, Msg, init, update, view)
 
 import Array exposing (Array)
 import Browser
@@ -17,7 +17,7 @@ urlPrefix =
     "http://elm-in-action.com/"
 
 
-viewThumbnail : Thumbnail -> Thumbnail -> Html Message
+viewThumbnail : Thumbnail -> Thumbnail -> Html Msg
 viewThumbnail selectedThumbnail thumbnail =
     img
         [ src <| urlPrefix ++ thumbnail.fileName
@@ -28,7 +28,7 @@ viewThumbnail selectedThumbnail thumbnail =
         []
 
 
-viewSizeChooser : ThumbnailSize -> ThumbnailSize -> Html Message
+viewSizeChooser : ThumbnailSize -> ThumbnailSize -> Html Msg
 viewSizeChooser selectedSize size =
     label []
         [ input
@@ -54,14 +54,14 @@ type alias FilterOptions =
     }
 
 
-onSlide : (Int -> Message) -> Attribute Message
+onSlide : (Int -> Msg) -> Attribute Msg
 onSlide slideEventMapper =
     Decoder.at [ "detail", "slidTo" ] Decoder.int
         |> Decoder.map slideEventMapper
         |> on "slide"
 
 
-viewFilter : (Int -> Message) -> String -> Int -> Html Message
+viewFilter : (Int -> Msg) -> String -> Int -> Html Msg
 viewFilter slideEventMapper name magnitude =
     div [ class "filter-slider" ]
         [ label [] [ text name ]
@@ -88,7 +88,7 @@ showSize size =
             "large"
 
 
-viewLoaded : List Thumbnail -> Thumbnail -> Model -> List (Html Message)
+viewLoaded : List Thumbnail -> Thumbnail -> Model -> List (Html Msg)
 viewLoaded thumbnails selected model =
     [ h1 [] [ text "Photo Groove" ]
     , button [ onClick SurpriseMeClicked ] [ text "Surprise Me!" ]
@@ -106,7 +106,7 @@ viewLoaded thumbnails selected model =
     ]
 
 
-view : Model -> Html Message
+view : Model -> Html Msg
 view model =
     div [ class "content" ] <|
         case model.state of
@@ -130,7 +130,7 @@ type ThumbnailSize
     | Large
 
 
-type Message
+type Msg
     = ThumbnailClicked Thumbnail
     | SurpriseMeClicked
     | SizeChanged ThumbnailSize
@@ -207,7 +207,7 @@ applyFilters model =
             ( model, Cmd.none )
 
 
-update : Message -> Model -> ( Model, Cmd Message )
+update : Msg -> Model -> ( Model, Cmd Msg )
 update message model =
     case ( message, model.state ) of
         ( SizeChanged size, _ ) ->
@@ -243,7 +243,7 @@ update message model =
             ( model, Cmd.none )
 
 
-initialCmd : Cmd Message
+initialCmd : Cmd Msg
 initialCmd =
     Http.get
         { url = "http://elm-in-action.com/photos/list.json"
@@ -251,41 +251,21 @@ initialCmd =
         }
 
 
-main : Program Value Model Message
-main =
-    Browser.element
-        { init = init
-        , view = view
-        , update = update
-        , subscriptions = subscriptions
-        }
-
-
-init : Value -> ( Model, Cmd Message )
+init : Float -> ( Model, Cmd Msg )
 init flags =
     let
         activity =
-            "Initializing Pasta " ++ parseFlags flags
+            "Initializing Pasta " ++ String.fromFloat flags
     in
     ( { initialModel | activity = activity }, initialCmd )
 
 
-parseFlags : Value -> String
-parseFlags flags =
-    case Decoder.decodeValue Decoder.float flags of
-        Ok f ->
-            "version " ++ String.fromFloat f
-
-        Err err ->
-            "error occurred: " ++ errorToString err
-
-
-subscriptions : Model -> Sub Message
+subscriptions : Model -> Sub Msg
 subscriptions model =
     activityChanges parseActivity
 
 
-parseActivity : Value -> Message
+parseActivity : Value -> Msg
 parseActivity v =
     case Decoder.decodeValue Decoder.string v of
         Ok str ->
