@@ -1,4 +1,4 @@
-port module PhotoGallery exposing (Model, Msg, init, update, view)
+port module PhotoGallery exposing (Model, Msg, init, subscriptions, update, view)
 
 import Array exposing (Array)
 import Browser
@@ -90,8 +90,7 @@ showSize size =
 
 viewLoaded : List Thumbnail -> Thumbnail -> Model -> List (Html Msg)
 viewLoaded thumbnails selected model =
-    [ h1 [] [ text "Photo Groove" ]
-    , button [ onClick SurpriseMeClicked ] [ text "Surprise Me!" ]
+    [ button [ onClick SurpriseMeClicked ] [ text "Surprise Me!" ]
     , div [ class "filters" ]
         [ viewFilter HueFilterUpdated "Hue" model.hue
         , viewFilter RippleFilterUpdated "Ripple" model.ripple
